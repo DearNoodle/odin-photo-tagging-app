@@ -13,7 +13,7 @@ async function getToken(req, res) {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
     maxAge: 30 * 60 * 1000,
-    // sameSite: 'none',
+    sameSite: 'none', // only when deploy
   });
   res.status(200).send('Token get successful');
 }

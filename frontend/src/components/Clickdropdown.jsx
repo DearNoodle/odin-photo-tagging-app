@@ -1,7 +1,6 @@
 import React, { useEffect } from "react";
 import axios from "axios";
 import { apiUrl } from "../App";
-import { useNavigate } from "react-router-dom";
 
 function Clickdropdown({
   coord,
@@ -15,8 +14,6 @@ function Clickdropdown({
   showModal,
   setShowModal,
 }) {
-  const navigate = useNavigate();
-
   const { normalX, normalY } = coord;
   const x = normalX * rect.width;
   const y = normalY * rect.height;
