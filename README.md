@@ -2,7 +2,7 @@
 
 ## Website Link
 
-- [**Touhou Ensemble**](https://taupe-medovik-26ae2d.netlify.app/)
+- [**Touhou Ensemble**](https://dearnoodle-photo-tagging-app.netlify.app/)
 
 ## Key Features
 

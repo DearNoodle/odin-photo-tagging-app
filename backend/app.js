@@ -6,7 +6,7 @@ const app = express();
 
 app.use(
   cors({
-    origin: 'https://taupe-medovik-26ae2d.netlify.app',
+    origin: 'https://dearnoodle-photo-tagging-app.netlify.app',
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
