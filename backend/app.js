@@ -24,7 +24,7 @@ app.use(cookieParser());
 
 app.use('/api', router);
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 8080;
 // '0.0.0.0' host % 8080 POST required for railway deploy
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`Listening on port ${PORT}!`);
