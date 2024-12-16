@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import MainPage from "./pages/MainPage.";
 import LeaderboardPage from "./pages/LeaderboardPage";
 
-export const apiUrl = "https://dearnoodle-photo-tagging-app.up.railway.app/api";
+export const apiUrl = "https://odin-photo-tagging-app.onrender.com/api";
 
 function App() {
   return (
