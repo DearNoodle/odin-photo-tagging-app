@@ -174,7 +174,7 @@ function MainPage() {
         </div>
       </div>
       <div className="px-2 py-4 flex justify-center items-center">
-        <ul className="w-2/3 flex gap-3 justify-center">
+        <ul className="flex gap-3 justify-center flex-wrap">
           {[
             { img: "/img/tenshi.jpg", name: "Hinanawi Tenshi" },
             { img: "/img/okuu.jpg", name: "Reiuji Utsuho" },
@@ -182,7 +182,7 @@ function MainPage() {
             { img: "/img/flandre.jpg", name: "Flandre Scarlet" },
             { img: "/img/eiki.jpg", name: "Shiki Eiki" },
           ].map(({ img, name }) => (
-            <li key={name} className="flex flex-col items-center">
+            <li key={name} className="flex flex-col items-center w-1/6">
               <img
                 src={img}
                 alt={name}
