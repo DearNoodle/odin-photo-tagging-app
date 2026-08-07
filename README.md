@@ -9,6 +9,8 @@
 
 > *Another incident unfolds in Gensokyo. Resolve it before the spell breaks.*
 
+**▶ [Click to Play](https://touhou-ensemble-2kpu.vercel.app/)**
+
 ## What is this?
 
 A Touhou-themed photo tagging game. Familiar faces are hiding somewhere inside a single picture — click the spot, pick the character from the dropdown, and find them all before they eat you alive ❤️.
