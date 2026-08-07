@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Washi Paper (light / day) */
+  --bg: #f5efe2;
+  --surface: #fbf7ec;
+  --line: #d9cfb8;
+  --ink: #1a1712;
+  --soft: #6b6356;
+
+  /* Brand accents — constant across themes */
+  --ofuda: #d9433b;
+  --gold: #c68a2e;
+  --mauve: #8b82a8;
+  --paper: #f5efe2;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Gensokyo Night (dark) */
+    --bg: #0b0a1a;
+    --surface: #17142c;
+    --line: #2a2542;
+    --ink: #e9e4d2;
+    --soft: #9d99b5;
+
+    --ofuda: #e65a4f;
+    --gold: #e8b84b;
+    --mauve: #7b7aa0;
+    --paper: #e9e4d2;
+  }
+}
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-feature-settings: "kern";
+}
+
+/* Visible keyboard focus — vermillion ring */
+:focus-visible {
+  outline: 2px solid var(--ofuda);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Ofuda scroll frame — double vermillion rule */
+.scroll-frame {
+  border: 2px solid var(--ofuda);
+  outline: 1px solid color-mix(in srgb, var(--ofuda) 35%, transparent);
+  outline-offset: 3px;
+}
+
+/* Spell-card panel — quiet double rule */
+.card-frame {
+  border: 2px solid var(--ofuda);
+  outline: 1px solid color-mix(in srgb, var(--ofuda) 40%, transparent);
+  outline-offset: 3px;
+}
+
+/* Reduced motion: neutralise decorative animation */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

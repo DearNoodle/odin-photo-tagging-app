@@ -1,0 +1,38 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model CharacterLocation {
+  id        Int    @id @default(autoincrement())
+  character String @unique
+  bounds    Json
+
+  @@map("character_locations")
+}
+
+model Session {
+  id                String   @id
+  charactersClicked Json
+  pool              Json?
+  difficulty        String   @default("all")
+  createdAt         DateTime @default(now())
+  finishTime        Int?
+  penaltySeconds    Int      @default(0)
+
+  @@map("session")
+}
+
+model Leaderboard {
+  id         String @id @default(uuid())
+  name       String
+  time       Int
+  difficulty String @default("all")
+  isAuthor   Boolean @default(false)
+
+  @@map("leaderboard")
+}
