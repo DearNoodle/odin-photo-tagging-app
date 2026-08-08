@@ -156,6 +156,7 @@ export function GameBoard() {
   const [idleLeft, setIdleLeft] = useState<number | null>(null);
   const [restoredName, setRestoredName] = useState<string | null>(null);
   const [timeoutFlashKey, setTimeoutFlashKey] = useState(0);
+  const [requestInFlight, setRequestInFlight] = useState(false);
   const boardControls = useAnimationControls();
 
   // Idle-timer motion locked to the countdown's seconds: one full
@@ -258,6 +259,9 @@ export function GameBoard() {
 
   function handleBoardClick(event: React.MouseEvent<HTMLDivElement>) {
     if (!started || finished || sessionError) return;
+    // Selection is disabled while a click or penalty request is in flight —
+    // mirrors the idle-timer freeze (no new aim ring mid-request).
+    if (requestInFlight) return;
     // A bare board click (aim circle + dropdown) is not a selection —
     // only an actual choice from the pop-up or the strip resets the
     // idle window.
@@ -331,8 +335,9 @@ export function GameBoard() {
   );
 
   async function handleSelect(character: string) {
-    if (!click || submittingRef.current) return;
+    if (!click || submittingRef.current || timeoutInFlightRef.current) return;
     submittingRef.current = true;
+    setRequestInFlight(true);
     // No touchActivity here: the idle window must not start until the
     // server has answered — API latency must not burn countdown time. The
     // tick holds the full window while this request is in flight.
@@ -391,6 +396,7 @@ export function GameBoard() {
       setBurst({ x: boardX, y: boardY, verdict: "incorrect", key: key + 1 });
     } finally {
       submittingRef.current = false;
+      setRequestInFlight(false);
       touchActivity();
     }
   }
@@ -455,6 +461,7 @@ export function GameBoard() {
     async function fireTimeoutPenalty() {
       if (timeoutInFlightRef.current) return;
       timeoutInFlightRef.current = true;
+      setRequestInFlight(true);
       const firedAt = Date.now();
       // The penalty is deterministic the moment the countdown hits zero —
       // shake, vignette and wrong-click sound play right away instead of
@@ -490,6 +497,7 @@ export function GameBoard() {
         // A failed penalty is skipped until the next idle window.
       } finally {
         timeoutInFlightRef.current = false;
+        setRequestInFlight(false);
         touchActivity();
       }
     }
@@ -831,7 +839,9 @@ export function GameBoard() {
           ref={boardRef}
           animate={boardControls}
           onClick={handleBoardClick}
-          className="relative w-full aspect-[2893/1158] rounded-sm overflow-hidden cursor-crosshair scroll-frame bg-surface"
+          className={`relative w-full aspect-[2893/1158] rounded-sm overflow-hidden scroll-frame bg-surface ${
+            requestInFlight ? "cursor-wait" : "cursor-crosshair"
+          }`}
         >
           <Image
             src="/img/background/touhou_full.jpg"
