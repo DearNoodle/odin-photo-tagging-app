@@ -1,11 +1,11 @@
 export const ACTIVE_SLOTS = 5;
 
-export type DifficultyId = "5" | "20" | "40" | "all";
+export type DifficultyId = "easy" | "normal" | "hard" | "lunatic";
 
-export const DIFFICULTIES: DifficultyId[] = ["5", "20", "40", "all"];
+export const DIFFICULTIES: DifficultyId[] = ["easy", "normal", "hard", "lunatic"];
 
 export function isDifficultyId(value: unknown): value is DifficultyId {
-  return value === "5" || value === "20" || value === "40" || value === "all";
+  return value === "easy" || value === "normal" || value === "hard" || value === "lunatic";
 }
 
 /** Fisher–Yates shuffle (returns a new array). */
@@ -18,13 +18,20 @@ export function shuffle<T>(items: readonly T[]): T[] {
   return copy;
 }
 
+/** Pool size per difficulty id. */
+const DIFFICULTY_POOL_SIZES: Record<DifficultyId, number> = {
+  easy: 5,
+  normal: 20,
+  hard: 40,
+  lunatic: 51,
+};
+
 /**
  * The session's character pool: a shuffled subset of the names.
- * "all" maps to the full list. Size is capped by the list length.
+ * "lunatic" maps to the full list. Size is capped by the list length.
  */
 export function pickPool(names: string[], difficulty: DifficultyId): string[] {
-  if (difficulty === "all") return shuffle(names);
-  const target = Number(difficulty);
+  const target = DIFFICULTY_POOL_SIZES[difficulty];
   return shuffle(names).slice(0, Math.min(target, names.length));
 }
 

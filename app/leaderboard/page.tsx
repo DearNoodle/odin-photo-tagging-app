@@ -7,6 +7,6 @@ export default async function Page({
   searchParams: Promise<{ difficulty?: string }>;
 }) {
   const params = await searchParams;
-  const difficulty = isDifficultyId(params.difficulty) ? params.difficulty : "all";
+  const difficulty = isDifficultyId(params.difficulty) ? params.difficulty : "lunatic";
   return <LeaderboardPage initialDifficulty={difficulty} />;
 }

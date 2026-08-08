@@ -27,6 +27,7 @@ vi.mock("../../lib/db", () => ({
           s ? { id: where.id, ...s, createdAt: new Date() } : null
         );
       }),
+      delete: vi.fn(() => Promise.resolve({})),
     },
   },
 }));
@@ -53,44 +54,48 @@ describe("POST /api/session", () => {
   });
 
   it("creates a shuffled pool of the requested size", async () => {
-    const res = await post({ difficulty: "5" });
+    const res = await post({ difficulty: "easy" });
     expect(res.status).toBe(201);
     const body = await res.json();
-    expect(body.difficulty).toBe("5");
+    expect(body.difficulty).toBe("easy");
     expect(body.pool).toHaveLength(5);
     expect(new Set(body.pool).size).toBe(5);
     expect(body.active).toHaveLength(5);
     expect(body.finished).toBe(false);
+    expect(body.totalClicks).toBe(0);
+    expect(body.correctClicks).toBe(0);
   });
 
-  it("picks the whole roster for 'all'", async () => {
-    const res = await post({ difficulty: "all" });
+  it("picks the whole roster for 'lunatic'", async () => {
+    const res = await post({ difficulty: "lunatic" });
     const body = await res.json();
     expect(body.pool).toHaveLength(51);
     expect(body.active).toHaveLength(5);
   });
 
-  it("reuses an unfinished session with the same difficulty", async () => {
-    const first = await post({ difficulty: "20" });
+  it("always starts a fresh session even with an unfinished session of the same difficulty", async () => {
+    const first = await post({ difficulty: "normal" });
     const firstBody = await first.json();
     const cookie = first.headers.get("set-cookie") ?? "";
     const sessionId = /sessionId=([^;]+)/.exec(cookie)?.[1];
 
-    const second = await post({ difficulty: "20" }, `sessionId=${sessionId}`);
+    const second = await post({ difficulty: "normal" }, `sessionId=${sessionId}`);
     const secondBody = await second.json();
-    expect(secondBody.sessionId).toBe(firstBody.sessionId);
-    expect(secondBody.pool).toEqual(firstBody.pool);
+    expect(secondBody.sessionId).not.toBe(firstBody.sessionId);
+    expect(secondBody.finished).toBe(false);
+    expect(secondBody.totalClicks).toBe(0);
+    expect(secondBody.correctClicks).toBe(0);
   });
 
   it("starts a fresh session when the difficulty changes", async () => {
-    const first = await post({ difficulty: "5" });
+    const first = await post({ difficulty: "easy" });
     const cookie = first.headers.get("set-cookie") ?? "";
     const sessionId = /sessionId=([^;]+)/.exec(cookie)?.[1];
 
-    const second = await post({ difficulty: "20" }, `sessionId=${sessionId}`);
+    const second = await post({ difficulty: "normal" }, `sessionId=${sessionId}`);
     const secondBody = await second.json();
     expect(secondBody.sessionId).not.toBe(undefined);
-    expect(secondBody.difficulty).toBe("20");
+    expect(secondBody.difficulty).toBe("normal");
     expect(secondBody.pool).toHaveLength(20);
   });
 });

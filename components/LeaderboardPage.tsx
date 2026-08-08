@@ -5,33 +5,45 @@ import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { formatTime } from "@/lib/format-time";
 import type { DifficultyId } from "@/lib/game/session-utils";
+import type { LeaderboardSort } from "@/lib/session-store";
 
-type LeaderboardEntry = { name: string; time: number; isAuthor?: boolean };
+type LeaderboardEntry = {
+  name: string;
+  time: number;
+  accuracy?: number;
+  isAuthor?: boolean;
+};
 
 const TABS: { id: DifficultyId; label: string }[] = [
-  { id: "5", label: "Easy" },
-  { id: "20", label: "Normal" },
-  { id: "40", label: "Hard" },
-  { id: "all", label: "Lunatic" },
+  { id: "easy", label: "Easy" },
+  { id: "normal", label: "Normal" },
+  { id: "hard", label: "Hard" },
+  { id: "lunatic", label: "Lunatic" },
+];
+
+const SORTS: { id: LeaderboardSort; label: string; title: string }[] = [
+  { id: "time", label: "Time", title: "Fastest time, then accuracy" },
+  { id: "accuracy", label: "Accuracy", title: "Highest accuracy, then time" },
 ];
 
 export function LeaderboardPage({
-  initialDifficulty = "all",
+  initialDifficulty = "lunatic",
 }: {
   initialDifficulty?: DifficultyId;
 }) {
   const [difficulty, setDifficulty] = useState<DifficultyId>(initialDifficulty);
+  const [sort, setSort] = useState<LeaderboardSort>("time");
   const [entries, setEntries] = useState<LeaderboardEntry[] | null>(null);
   const [error, setError] = useState(false);
 
   useEffect(() => {
     setEntries(null);
     setError(false);
-    fetch(`/api/leaderboard?difficulty=${difficulty}`)
+    fetch(`/api/leaderboard?difficulty=${difficulty}&sort=${sort}`)
       .then((res) => (res.ok ? res.json() : Promise.reject()))
       .then(setEntries)
       .catch(() => setError(true));
-  }, [difficulty]);
+  }, [difficulty, sort]);
 
   return (
     <main className="min-h-screen mx-auto max-w-2xl px-4 py-8 sm:py-12 flex flex-col gap-7">
@@ -64,6 +76,30 @@ export function LeaderboardPage({
               }`}
             >
               {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="flex items-center gap-1.5 justify-end">
+        <span className="font-display tracking-[0.2em] text-[9px] sm:text-[10px] uppercase text-soft mr-1">
+          Sort by
+        </span>
+        {SORTS.map((option) => {
+          const selected = sort === option.id;
+          return (
+            <button
+              key={option.id}
+              type="button"
+              title={option.title}
+              onClick={() => setSort(option.id)}
+              className={`rounded-sm border px-3 py-1 font-display tracking-widest text-xs transition-colors ${
+                selected
+                  ? "border-gold bg-gold text-paper"
+                  : "border-line text-soft hover:border-soft hover:text-ink"
+              }`}
+            >
+              {option.label}
             </button>
           );
         })}
@@ -122,6 +158,14 @@ export function LeaderboardPage({
                       }`}
                     >
                       {entry.name}
+                    </span>
+                    <span
+                      className={`shrink-0 font-body tabular-nums text-sm sm:text-base ${
+                        devAuto ? "text-[#5b9bd5]" : "text-gold"
+                      }`}
+                      aria-label={`Accuracy ${Math.round((entry.accuracy ?? 1) * 100)}%`}
+                    >
+                      {Math.round((entry.accuracy ?? 1) * 100)}%
                     </span>
                     <span
                       className={`shrink-0 font-body tabular-nums text-sm sm:text-base ${

@@ -1,12 +1,7 @@
 import { getSessionId, setSessionCookie, clearSessionCookie } from "../../../lib/session-cookie";
-import { createSession, findSession, deleteSession, sessionPool } from "../../../lib/session-store";
+import { createSession, deleteSession } from "../../../lib/session-store";
 import { CHARACTER_NAMES } from "../../../lib/character-names";
-import {
-  activeCharacters,
-  isDifficultyId,
-  pickPool,
-  poolFinished,
-} from "../../../lib/game/session-utils";
+import { activeCharacters, isDifficultyId, pickPool } from "../../../lib/game/session-utils";
 
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
@@ -15,24 +10,13 @@ export async function POST(request: Request) {
     return Response.json({ error: "invalid difficulty" }, { status: 400 });
   }
 
-  const existingId = getSessionId(request);
-  if (existingId) {
-    const existing = await findSession(existingId);
-    if (
-      existing &&
-      existing.difficulty === difficulty &&
-      existing.finishTime == null
-    ) {
-      const clicked = existing.charactersClicked as Record<string, boolean>;
-      return Response.json({
-        sessionId: existingId,
-        difficulty,
-        pool: sessionPool(existing),
-        clicked,
-        active: activeCharacters(sessionPool(existing), clicked),
-        finished: poolFinished(clicked),
-      });
-    }
+  // Choosing a difficulty in the menu always opens a fresh game — the
+  // previous session is dropped so progress and accuracy reset instead of
+  // silently resuming (reload → same difficulty used to continue the old
+  // game with its stale counters).
+  const previousId = getSessionId(request);
+  if (previousId) {
+    await deleteSession(previousId).catch(() => {});
   }
 
   const sessionId = crypto.randomUUID();
@@ -47,6 +31,8 @@ export async function POST(request: Request) {
       clicked: Object.fromEntries(pool.map((name) => [name, false])),
       active: activeCharacters(pool, {}),
       finished: false,
+      totalClicks: 0,
+      correctClicks: 0,
     }),
     { status: 201, headers: { "Set-Cookie": setSessionCookie(sessionId) } }
   );

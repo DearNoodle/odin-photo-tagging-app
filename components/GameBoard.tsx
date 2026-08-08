@@ -1,13 +1,20 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { AnimatePresence, motion } from "framer-motion";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  AnimatePresence,
+  motion,
+  useAnimationControls,
+  useAnimationFrame,
+  useMotionValue,
+  useReducedMotion,
+} from "framer-motion";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { getThumb } from "@/lib/character-thumbs";
 import { BLUR_HERO } from "@/lib/image-blurs";
-import { setSoundMuted } from "@/lib/sfx";
+import { setSoundMuted, playWrongSound, playTimeoutSound } from "@/lib/sfx";
 import { type DifficultyId } from "@/lib/game/session-utils";
 import { GameTimer } from "./GameTimer";
 import { AimMarker } from "./AimMarker";
@@ -28,6 +35,51 @@ export type ClickPoint = {
 
 type Burst = { x: number; y: number; verdict: Verdict; key: number } | null;
 
+/** Lunatic idle penalty: a 15s window without any selection restores one find. */
+const LUNATIC_IDLE_MS = 15000;
+
+/** Hold the full window after a reset before the countdown starts ticking. */
+const IDLE_RESET_GRACE_MS = 500;
+
+/** Deterministic 0..1 hash of an integer — one random tilt per second, stable within it. */
+function pseudoRandom(n: number): number {
+  let x = n >>> 0;
+  x = Math.imul(x ^ (x >>> 16), 0x45d9f3b) >>> 0;
+  x = Math.imul(x ^ (x >>> 16), 0x45d9f3b) >>> 0;
+  return ((x ^ (x >>> 16)) >>> 0) / 4294967296;
+}
+
+/**
+ * Fade keyframes within each second (ms → opacity): hidden (0) around the
+ * second boundary, visible (1) through mid-second. Only 0 and 1 are ever
+ * keyframed; the segments between them interpolate linearly. The timeline
+ * wraps around 1000ms (the dip straddles 0ms, half a second off the swell).
+ */
+const FADE_KEYFRAMES: [number, number][] = [
+  [25, 0],
+  [300, 1],
+  [700, 1],
+  [975, 0],
+];
+
+function fadeAt(ms: number): number {
+  // Wrapped head: [0, 25) belongs to the tail of the previous second.
+  if (ms < FADE_KEYFRAMES[0][0]) {
+    const [t0, v0] = FADE_KEYFRAMES[FADE_KEYFRAMES.length - 1];
+    const [t1, v1] = FADE_KEYFRAMES[0];
+    return v0 + ((v1 - v0) * (ms + 1000 - t0)) / (t1 + 1000 - t0);
+  }
+  for (let i = 1; i < FADE_KEYFRAMES.length; i++) {
+    const [t0, v0] = FADE_KEYFRAMES[i - 1];
+    const [t1, v1] = FADE_KEYFRAMES[i];
+    if (ms <= t1) return v0 + ((v1 - v0) * (ms - t0)) / (t1 - t0);
+  }
+  // Wrapped tail: [975, 1000) leads into the head of the next second.
+  const [t0, v0] = FADE_KEYFRAMES[FADE_KEYFRAMES.length - 1];
+  const [t1, v1] = FADE_KEYFRAMES[0];
+  return v0 + ((v1 - v0) * (ms - t0)) / (t1 + 1000 - t0);
+}
+
 type SessionPayload = {
   sessionId: string;
   difficulty: DifficultyId;
@@ -35,6 +87,8 @@ type SessionPayload = {
   clicked: Record<string, boolean>;
   active: string[];
   finished: boolean;
+  totalClicks?: number;
+  correctClicks?: number;
 };
 
 const DIFFICULTY_OPTIONS: {
@@ -44,25 +98,25 @@ const DIFFICULTY_OPTIONS: {
   description: string;
 }[] = [
   {
-    id: "5",
+    id: "easy",
     label: "Easy",
     hint: "5 characters",
     description: "Eeeh? Easy Modo?!",
   },
   {
-    id: "20",
+    id: "normal",
     label: "Normal",
     hint: "20 characters",
     description: "You'll be fine. Probably.",
   },
   {
-    id: "40",
+    id: "hard",
     label: "Hard",
     hint: "40 characters",
     description: "This is where the fun begins.",
   },
   {
-    id: "all",
+    id: "lunatic",
     label: "Lunatic",
     hint: "Every character",
     description: "Welcome to Hell... or Moon?",
@@ -72,6 +126,7 @@ const DIFFICULTY_OPTIONS: {
 export function GameBoard() {
   const router = useRouter();
   const boardRef = useRef<HTMLDivElement>(null);
+  const reduceMotion = useReducedMotion();
 
   const [difficulty, setDifficulty] = useState<DifficultyId | null>(null);
   const [target, setTarget] = useState(0);
@@ -82,7 +137,7 @@ export function GameBoard() {
   const [click, setClick] = useState<ClickPoint | null>(null);
   const [burst, setBurst] = useState<Burst>(null);
   const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [menuEnabled, setMenuEnabled] = useState(true);
+  const [menuEnabled, setMenuEnabled] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [finished, setFinished] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -90,9 +145,44 @@ export function GameBoard() {
   const [beginning, setBeginning] = useState(false);
   const [sessionError, setSessionError] = useState(false);
   const [penalty, setPenalty] = useState(0);
+  const [totalClicks, setTotalClicks] = useState(0);
+  const [correctClicks, setCorrectClicks] = useState(0);
   const submittingRef = useRef(false);
   const nameSubmitRef = useRef(false);
   const rerollRef = useRef(false);
+  const lastActivityRef = useRef(Date.now());
+  const timeoutInFlightRef = useRef(false);
+  const lastTickSecondRef = useRef(-1);
+  const [idleLeft, setIdleLeft] = useState<number | null>(null);
+  const [restoredName, setRestoredName] = useState<string | null>(null);
+  const [timeoutFlashKey, setTimeoutFlashKey] = useState(0);
+  const boardControls = useAnimationControls();
+
+  // Idle-timer motion locked to the countdown's seconds: one full
+  // swell/tilt/fade cycle per 1000ms, peaking on the same beat as the
+  // per-second tick sound, then fading back out with it.
+  const idleScale = useMotionValue(1);
+  const idleRotate = useMotionValue(0);
+  const idleOpacity = useMotionValue(1);
+  useAnimationFrame(() => {
+    const counting = started && difficulty === "lunatic" && !finished;
+    if (!counting || reduceMotion) return;
+    const danger = idleLeft !== null && idleLeft <= 5000;
+    const elapsed = Date.now() - lastActivityRef.current;
+    const phase = elapsed % 1000;
+    const ang = (phase / 1000) * Math.PI * 2;
+    const r = pseudoRandom(Math.floor(elapsed / 1000));
+    const tiltDir = r > 0.5 ? 1 : -1;
+    const tiltAmp = danger ? 7 : 2.2;
+    const s = Math.sin(ang);
+    // Shrink harder than it grows — the danger beat visibly collapses.
+    const grow = danger ? 0.24 : 0.07;
+    const shrink = danger ? 0.38 : 0.1;
+    idleScale.set(1 + (s >= 0 ? grow : shrink) * s);
+    idleRotate.set(tiltDir * tiltAmp * Math.sin(ang));
+    // Gradual fade per second, keyframed at 0 / 100 / 500 / 900ms.
+    idleOpacity.set(danger ? fadeAt(phase) : 1);
+  });
 
   useEffect(() => {
     const stored = window.localStorage.getItem("menu-enabled");
@@ -152,7 +242,10 @@ export function GameBoard() {
           .filter(([, v]) => v)
           .map(([k]) => k),
       );
+      setTotalClicks(data.totalClicks ?? 0);
+      setCorrectClicks(data.correctClicks ?? 0);
       setStarted(true);
+      touchActivity();
       if (data.finished) {
         handleFinished();
       }
@@ -165,6 +258,9 @@ export function GameBoard() {
 
   function handleBoardClick(event: React.MouseEvent<HTMLDivElement>) {
     if (!started || finished || sessionError) return;
+    // A bare board click (aim circle + dropdown) is not a selection —
+    // only an actual choice from the pop-up or the strip resets the
+    // idle window.
     const el = boardRef.current;
     if (!el) return;
 
@@ -207,9 +303,29 @@ export function GameBoard() {
     setDropdownOpen(true);
   }
 
+  const showPenalty = useCallback(
+    (restored?: string) => {
+      if (!reduceMotion) {
+        void boardControls.start({
+          x: [0, -7, 7, -5, 5, -2, 2, 0],
+          transition: { duration: 0.3, ease: "easeInOut" },
+        });
+      }
+      setTimeoutFlashKey((k) => k + 1);
+      if (restored) {
+        setRestoredName(restored);
+        window.setTimeout(() => {
+          setRestoredName((n) => (n === restored ? null : n));
+        }, 1800);
+      }
+    },
+    [boardControls, reduceMotion],
+  );
+
   async function handleSelect(character: string) {
     if (!click || submittingRef.current) return;
     submittingRef.current = true;
+    touchActivity();
     const { normalX, normalY, boardX, boardY, key } = click;
     setDropdownOpen(false);
 
@@ -224,6 +340,8 @@ export function GameBoard() {
       const verdict: Verdict =
         data.result === "correct" ? "correct" : "incorrect";
       setBurst({ x: boardX, y: boardY, verdict, key: key + 1 });
+      setTotalClicks(data.totalClicks ?? totalClicks);
+      setCorrectClicks(data.correctClicks ?? correctClicks);
 
       if (data.result === "correct") {
         setFound((prev) =>
@@ -255,6 +373,9 @@ export function GameBoard() {
           setStripShuffled(true);
           setActive(next);
         }
+        // Penalty visuals on every miss, whatever the difficulty — shake
+        // and vignette always; the restored ring when one came back.
+        showPenalty(data.restored);
       }
     } catch {
       setBurst({ x: boardX, y: boardY, verdict: "incorrect", key: key + 1 });
@@ -293,6 +414,94 @@ export function GameBoard() {
       rerollRef.current = false;
     }
   }
+
+  /**
+   * Restart the Lunatic idle window (any selection or dispatch counts). The
+   * full 15s is held for a beat (`IDLE_RESET_GRACE_MS`) so the reset reads
+   * as feedback before the countdown starts ticking down again.
+   */
+  function touchActivity() {
+    lastActivityRef.current = Date.now();
+  }
+
+  /**
+   * Lunatic idle penalty. The window restarts at dispatch time, so a slow
+   * response (3s+) never re-triggers the penalty or sits at zero while
+   * waiting; the ref lock prevents overlapping requests. `firedAt` lets the
+   * server cancel the penalty if the player acted after it was dispatched
+   * (e.g. a selection sent before the timer ended, still in flight).
+   */
+  useEffect(() => {
+    if (!started || difficulty !== "lunatic" || finished) {
+      setIdleLeft(null);
+      return;
+    }
+
+    async function fireTimeoutPenalty() {
+      if (timeoutInFlightRef.current) return;
+      timeoutInFlightRef.current = true;
+      const firedAt = Date.now();
+      touchActivity();
+      try {
+        const res = await fetch("/api/timeout", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ firedAt }),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        let applied = false;
+        if (data.restored) {
+          applied = true;
+          setFound((prev) => prev.filter((name) => name !== data.restored));
+        }
+        if (Array.isArray(data.active)) {
+          const next: string[] = data.active;
+          const changed =
+            next.length !== active.length ||
+            next.some((name, i) => name !== active[i]);
+          if (changed) {
+            applied = true;
+            setShuffleTick((tick) => tick + 1);
+            setStripShuffled(true);
+            setActive(next);
+          }
+        }
+        if (applied) {
+          playWrongSound();
+          showPenalty(data.restored);
+        }
+      } catch {
+        // A failed penalty is skipped until the next idle window.
+      } finally {
+        timeoutInFlightRef.current = false;
+      }
+    }
+
+    const tick = () => {
+      const now = Date.now();
+      const since = now - lastActivityRef.current;
+      // Reset feedback: hold the full window for `IDLE_RESET_GRACE_MS`
+      // before the countdown resumes, then tick down from 15s.
+      const left =
+        since < IDLE_RESET_GRACE_MS
+          ? LUNATIC_IDLE_MS
+          : LUNATIC_IDLE_MS - (since - IDLE_RESET_GRACE_MS);
+      setIdleLeft(Math.max(0, Math.ceil(left)));
+      // One blip per second once the countdown enters its final 5 seconds.
+      const second = Math.ceil(left / 1000);
+      if (left <= 5000 && left > 0 && second !== lastTickSecondRef.current) {
+        lastTickSecondRef.current = second;
+        playTimeoutSound();
+      } else if (left > 5000) {
+        lastTickSecondRef.current = -1;
+      }
+      if (left <= 0) void fireTimeoutPenalty();
+    };
+    const id = window.setInterval(tick, 90);
+    tick();
+    return () => window.clearInterval(id);
+  }, [started, difficulty, finished, active, boardControls, reduceMotion, showPenalty]);
 
   return (
     <main className="min-h-screen mx-auto max-w-5xl px-4 py-6 sm:py-8 flex flex-col gap-3 sm:gap-4">
@@ -337,9 +546,18 @@ export function GameBoard() {
             Find
           </p>
           {started && (
-            <p className="font-display tracking-[0.18em] text-soft text-[10px] sm:text-xs uppercase tabular-nums">
-              {found.length} / {target}
-            </p>
+            <div className="flex items-center gap-3">
+              {totalClicks > 0 && (
+                <p className="font-display tracking-[0.18em] text-gold text-[10px] sm:text-xs uppercase tabular-nums">
+                  ACC{" "}
+                  {Math.round((correctClicks / totalClicks) * 100)}
+                  %
+                </p>
+              )}
+              <p className="font-display tracking-[0.18em] text-soft text-[10px] sm:text-xs uppercase tabular-nums">
+                {found.length} / {target}
+              </p>
+            </div>
           )}
         </div>
         <ul className="flex flex-wrap justify-center gap-5 sm:gap-8">
@@ -348,6 +566,7 @@ export function GameBoard() {
               const thumb = getThumb(name);
               const shuffling = stripShuffled;
               const spin = index % 2 === 0 ? -10 : 10;
+              const isRestored = name === restoredName;
               return (
                 <motion.li
                   key={`${name}-${shuffleTick}`}
@@ -388,8 +607,12 @@ export function GameBoard() {
                 >
                   <motion.div
                     animate={{
-                      boxShadow:
-                        dropdownOpen && click
+                      boxShadow: isRestored
+                        ? [
+                            "0 0 0 0 rgba(230, 90, 79, 0.75)",
+                            "0 0 0 8px rgba(230, 90, 79, 0)",
+                          ]
+                        : dropdownOpen && click
                           ? [
                               "0 0 0 0 rgba(230, 90, 79, 0.5)",
                               "0 0 0 6px rgba(230, 90, 79, 0)",
@@ -397,9 +620,11 @@ export function GameBoard() {
                           : "0 0 0 0 rgba(230, 90, 79, 0)",
                     }}
                     transition={
-                      dropdownOpen && click
-                        ? { repeat: Infinity, duration: 1.1, ease: "easeOut" }
-                        : { duration: 0.2 }
+                      isRestored
+                        ? { repeat: Infinity, duration: 0.9, ease: "easeOut" }
+                        : dropdownOpen && click
+                          ? { repeat: Infinity, duration: 1.1, ease: "easeOut" }
+                          : { duration: 0.2 }
                     }
                     className="rounded-sm"
                   >
@@ -499,7 +724,7 @@ export function GameBoard() {
             </span>
           </button>
 
-          {difficulty === "5" && started && !finished ? (
+          {difficulty === "easy" && started && !finished ? (
             <button
               type="button"
               onClick={handleReroll}
@@ -508,6 +733,47 @@ export function GameBoard() {
             >
               Reroll (+30s)
             </button>
+          ) : difficulty === "lunatic" && started && !finished && idleLeft !== null ? (
+            <span
+              role="timer"
+              title="15s without a selection restores a random found character"
+              className="justify-self-center flex flex-col items-center px-2 py-1"
+            >
+              <span className="flex items-end h-9 sm:h-10">
+                <span className="flex items-baseline gap-0.5 leading-none">
+                  <motion.span
+                    style={{ scale: idleScale, rotate: idleRotate, opacity: idleOpacity }}
+                    className={`font-display tabular-nums text-center leading-none transition-all px-1 py-1 will-change-transform ${
+                      idleLeft <= 5000
+                        ? "text-ofuda text-3xl sm:text-4xl"
+                        : "text-ink text-2xl sm:text-3xl"
+                    }`}
+                  >
+                    {(idleLeft / 1000).toFixed(1)}
+                  </motion.span>
+                  <span
+                    className={`font-display text-sm sm:text-base transition-colors ${
+                      idleLeft <= 5000 ? "text-ofuda" : "text-soft"
+                    }`}
+                  >
+                    s
+                  </span>
+                </span>
+              </span>
+              <span className="mt-0.5 block h-0.5 w-full overflow-hidden rounded-full bg-line/60">
+                <span
+                  className={`block h-full rounded-full transition-[width] duration-300 ease-linear ${
+                    idleLeft <= 5000 ? "bg-ofuda" : "bg-gold"
+                  }`}
+                  style={{
+                    width: `${Math.max(
+                      0,
+                      Math.min(100, (idleLeft / LUNATIC_IDLE_MS) * 100)
+                    )}%`,
+                  }}
+                />
+              </span>
+            </span>
           ) : (
             <span aria-hidden="true" />
           )}
@@ -537,8 +803,9 @@ export function GameBoard() {
           </button>
         </div>
 
-        <div
+        <motion.div
           ref={boardRef}
+          animate={boardControls}
           onClick={handleBoardClick}
           className="relative w-full aspect-[2893/1158] rounded-sm overflow-hidden cursor-crosshair scroll-frame bg-surface"
         >
@@ -553,6 +820,22 @@ export function GameBoard() {
             className="select-none"
             draggable={false}
           />
+
+          {/* Red danger vignette — one pulse when the idle penalty lands */}
+          {timeoutFlashKey > 0 && (
+            <motion.div
+              key={timeoutFlashKey}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: [0, 0.5, 0.5, 0] }}
+              transition={{ duration: 0.5, times: [0, 0.12, 0.65, 1] }}
+              onAnimationComplete={() => setTimeoutFlashKey(0)}
+              className="pointer-events-none absolute inset-0 z-30"
+              style={{
+                background:
+                  "radial-gradient(ellipse at center, transparent 45%, var(--ofuda) 115%)",
+              }}
+            />
+          )}
 
           <AnimatePresence>
             {dropdownOpen && click && !burst && (
@@ -590,7 +873,7 @@ export function GameBoard() {
               />
             )}
           </AnimatePresence>
-        </div>
+        </motion.div>
         <figcaption className="mt-3 text-center font-body italic text-soft text-xs sm:text-sm">
           Another incident unfolds in Gensokyo, resolve it before the spell
           breaks.
@@ -639,14 +922,14 @@ export function GameBoard() {
                       className={`rounded-sm border px-3 py-2.5 font-display tracking-wide transition-colors ${
                         selected
                           ? "border-ofuda bg-ofuda text-paper"
-                          : option.id === "all"
+                          : option.id === "lunatic"
                             ? "border-line text-ofuda hover:border-ofuda hover:bg-ofuda/10"
                             : "border-line text-ink hover:border-soft"
                       }`}
                     >
                       {option.label}
                       <span className="block font-body text-[10px] mt-0.5 opacity-70">
-                        {option.id === "all" ? "All characters" : option.hint}
+                        {option.id === "lunatic" ? "All characters" : option.hint}
                       </span>
                     </button>
                   );

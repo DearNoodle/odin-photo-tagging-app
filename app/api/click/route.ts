@@ -30,12 +30,16 @@ export async function PUT(request: Request) {
         result: "incorrect",
         restored: outcome.restored,
         active: outcome.active,
+        totalClicks: outcome.totalClicks,
+        correctClicks: outcome.correctClicks,
       });
     case "correct":
       return Response.json({
         result: "correct",
         finished: outcome.finished,
         replacement: outcome.replacement,
+        totalClicks: outcome.totalClicks,
+        correctClicks: outcome.correctClicks,
       });
   }
 }

@@ -1,7 +1,9 @@
 let wrongAudio: HTMLAudioElement | null = null;
 let correctAudio: HTMLAudioElement | null = null;
+let timeoutAudio: HTMLAudioElement | null = null;
 let wrongFallback = false;
 let correctFallback = false;
+let timeoutFallback = false;
 let ctx: AudioContext | null = null;
 let soundMuted = false;
 
@@ -142,5 +144,50 @@ function synthChime() {
     osc.stop(t + 0.55);
     sparkle.start(t);
     sparkle.stop(t + 0.4);
+  });
+}
+
+/** Short synthesized tick — fallback for the idle-penalty countdown blip. */
+function synthTick() {
+  const audioCtx = ensureCtx();
+  if (!audioCtx) return;
+
+  const now = audioCtx.currentTime;
+  const osc = audioCtx.createOscillator();
+  osc.type = "square";
+  osc.frequency.value = 1200;
+  const gain = audioCtx.createGain();
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(0.12, now + 0.005);
+  gain.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start(now);
+  osc.stop(now + 0.07);
+}
+
+/**
+ * Idle-penalty countdown tick — plays /sfx/timeout.wav once per second during
+ * the final seconds of the Lunatic idle countdown; falls back to a short
+ * synthesized tick when the file is missing.
+ */
+export function playTimeoutSound() {
+  if (typeof window === "undefined" || soundMuted) return;
+  if (timeoutFallback) {
+    synthTick();
+    return;
+  }
+  if (!timeoutAudio) {
+    timeoutAudio = new Audio("/sfx/timeout.wav");
+    timeoutAudio.volume = 0.225;
+    timeoutAudio.addEventListener("error", () => {
+      timeoutAudio = null;
+      timeoutFallback = true;
+    });
+  }
+  timeoutAudio.currentTime = 0;
+  void timeoutAudio.play().catch(() => {
+    timeoutFallback = true;
+    synthTick();
   });
 }

@@ -220,7 +220,7 @@ export function DanmakuBurst({
             }
             transition={{ duration: 1, times: [0, 0.2, 0.72, 1] }}
             onAnimationComplete={onFadeOut}
-            className="absolute block rounded-sm text-center font-display tracking-[0.3em] text-ofuda text-lg"
+            className="absolute block rounded-sm text-center font-display tracking-[0.3em] text-paper text-lg"
             style={{ left: -55, top: -19, width: 110 }}
           >
             MISS

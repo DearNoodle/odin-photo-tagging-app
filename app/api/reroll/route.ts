@@ -15,11 +15,11 @@ export async function POST(request: Request) {
   if (!session) {
     return Response.json({ error: "session not found" }, { status: 401 });
   }
-  if (session.difficulty !== "5" || session.finishTime != null) {
+  if (session.difficulty !== "easy" || session.finishTime != null) {
     return Response.json({ error: "reroll only in Easy" }, { status: 403 });
   }
 
-  const pool = pickPool(CHARACTER_NAMES, "5");
+  const pool = pickPool(CHARACTER_NAMES, "easy");
   const charactersClicked: ClickState = Object.fromEntries(
     pool.map((name) => [name, false])
   );

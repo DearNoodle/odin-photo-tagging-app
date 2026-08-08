@@ -41,6 +41,30 @@ export async function updateClickState(id: string, charactersClicked: ClickState
   });
 }
 
+/** Record a player action — cancels any in-flight idle penalty. */
+export async function updateSessionActivity(id: string) {
+  return prisma.session.update({
+    where: { id },
+    data: { lastActivityAt: new Date() },
+  });
+}
+
+/**
+ * Record one selection: bumps the click counters (accuracy = correct /
+ * total) and touches the activity timestamp — the same write that cancels
+ * an in-flight idle penalty.
+ */
+export async function recordClick(id: string, hit: boolean) {
+  return prisma.session.update({
+    where: { id },
+    data: {
+      lastActivityAt: new Date(),
+      totalClicks: { increment: 1 },
+      ...(hit ? { correctClicks: { increment: 1 } } : {}),
+    },
+  });
+}
+
 export async function updateSessionPool(id: string, pool: string[]) {
   return prisma.session.update({
     where: { id },
@@ -83,10 +107,23 @@ export function sessionPool(session: {
   return Object.keys(clicked);
 }
 
-export async function getLeaderboardRows(difficulty: DifficultyId) {
+export type LeaderboardSort = "time" | "accuracy";
+
+/**
+ * Top leaderboard rows for a difficulty. Primary sort follows `sort`, the
+ * other metric breaks ties — always best-first (fastest time, then highest
+ * accuracy — or vice versa), never reversed.
+ */
+export async function getLeaderboardRows(
+  difficulty: DifficultyId,
+  sort: LeaderboardSort = "time"
+) {
   return prisma.leaderboard.findMany({
     where: { difficulty },
-    orderBy: { time: "asc" },
+    orderBy:
+      sort === "accuracy"
+        ? [{ accuracy: "desc" }, { time: "asc" }]
+        : [{ time: "asc" }, { accuracy: "desc" }],
     take: LEADERBOARD_SIZE,
   });
 }
@@ -95,7 +132,10 @@ export async function addLeaderboardEntry(
   name: string,
   time: number,
   difficulty: DifficultyId,
-  isAuthor = false
+  isAuthor = false,
+  accuracy = 1
 ) {
-  return prisma.leaderboard.create({ data: { name, time, difficulty, isAuthor } });
+  return prisma.leaderboard.create({
+    data: { name, time, difficulty, isAuthor, accuracy },
+  });
 }

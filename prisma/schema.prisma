@@ -19,10 +19,13 @@ model Session {
   id                String   @id
   charactersClicked Json
   pool              Json?
-  difficulty        String   @default("all")
+  difficulty        String   @default("lunatic")
   createdAt         DateTime @default(now())
+  lastActivityAt    DateTime @default(now())
   finishTime        Int?
   penaltySeconds    Int      @default(0)
+  totalClicks       Int      @default(0)
+  correctClicks     Int      @default(0)
 
   @@map("session")
 }
@@ -31,8 +34,9 @@ model Leaderboard {
   id         String @id @default(uuid())
   name       String
   time       Int
-  difficulty String @default("all")
+  difficulty String @default("lunatic")
   isAuthor   Boolean @default(false)
+  accuracy   Float  @default(1)
 
   @@map("leaderboard")
 }

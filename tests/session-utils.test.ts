@@ -20,23 +20,23 @@ describe("shuffle", () => {
 describe("pickPool", () => {
   it("picks exactly the difficulty count", () => {
     for (let round = 0; round < 20; round++) {
-      expect(pickPool(roster, "5")).toHaveLength(5);
-      expect(pickPool(roster, "20")).toHaveLength(10);
-      expect(pickPool(roster, "40")).toHaveLength(10);
+      expect(pickPool(roster, "easy")).toHaveLength(5);
+      expect(pickPool(roster, "normal")).toHaveLength(10);
+      expect(pickPool(roster, "hard")).toHaveLength(10);
     }
   });
 
-  it("returns the whole roster for 'all'", () => {
-    expect(pickPool(roster, "all")).toHaveLength(10);
+  it("returns the whole roster for 'lunatic'", () => {
+    expect(pickPool(roster, "lunatic")).toHaveLength(10);
   });
 
   it("never repeats a character", () => {
-    const pool = pickPool(roster, "20");
+    const pool = pickPool(roster, "normal");
     expect(new Set(pool).size).toBe(pool.length);
   });
 
   it("caps at roster length when the difficulty exceeds it", () => {
-    expect(pickPool(roster, "40")).toHaveLength(roster.length);
+    expect(pickPool(roster, "hard")).toHaveLength(roster.length);
   });
 });
 
@@ -99,11 +99,11 @@ describe("poolFinished", () => {
 
 describe("isDifficultyId", () => {
   it("accepts the four difficulty ids only", () => {
-    expect(isDifficultyId("5")).toBe(true);
-    expect(isDifficultyId("20")).toBe(true);
-    expect(isDifficultyId("40")).toBe(true);
-    expect(isDifficultyId("all")).toBe(true);
-    expect(isDifficultyId("10")).toBe(false);
+    expect(isDifficultyId("easy")).toBe(true);
+    expect(isDifficultyId("normal")).toBe(true);
+    expect(isDifficultyId("hard")).toBe(true);
+    expect(isDifficultyId("lunatic")).toBe(true);
+    expect(isDifficultyId("medium")).toBe(false);
     expect(isDifficultyId("25")).toBe(false);
     expect(isDifficultyId(5)).toBe(false);
     expect(isDifficultyId(null)).toBe(false);

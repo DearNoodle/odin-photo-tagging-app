@@ -4,7 +4,7 @@ import { POST } from "../../app/api/reroll/route";
 const store = vi.hoisted(() => {
   const session = {
     id: "s1",
-    difficulty: "5",
+    difficulty: "easy",
     pool: ["a", "b", "c", "d", "e"],
     charactersClicked: {
       a: true,
@@ -46,7 +46,7 @@ const post = () =>
   );
 
 beforeEach(() => {
-  store.session.difficulty = "5";
+  store.session.difficulty = "easy";
   store.session.finishTime = null;
   store.session.penaltySeconds = 0;
   store.updates.length = 0;
@@ -76,7 +76,7 @@ describe("POST /api/reroll", () => {
   });
 
   it("rejects non-Easy sessions", async () => {
-    store.session.difficulty = "20";
+    store.session.difficulty = "normal";
     const res = await post();
     expect(res.status).toBe(403);
     expect(store.updates).toHaveLength(0);

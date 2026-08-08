@@ -6,11 +6,13 @@ const store = vi.hoisted(() => {
   const pool = ["a", "b", "c", "d", "e", "f", "g", "h"];
   const session = {
     id: "s1",
-    difficulty: "all",
+    difficulty: "lunatic",
     pool,
     charactersClicked: Object.fromEntries(pool.map((n) => [n, false])) as Record<string, boolean>,
     createdAt: new Date(),
     finishTime: null as number | null,
+    totalClicks: 0,
+    correctClicks: 0,
   };
   const boundsByCharacter = new Map<string, Bounds>([
     ["a", { xMin: 0.1, xMax: 0.2, yMin: 0.1, yMax: 0.2 }],
@@ -48,6 +50,13 @@ vi.mock("../../lib/db", () => ({
           store.session.pool = data.pool as string[];
           store.poolUpdateCount += 1;
         }
+        const increments = data as Record<string, { increment?: number } | undefined>;
+        if (typeof increments.totalClicks?.increment === "number") {
+          store.session.totalClicks += increments.totalClicks.increment;
+        }
+        if (typeof increments.correctClicks?.increment === "number") {
+          store.session.correctClicks += increments.correctClicks.increment;
+        }
         return Promise.resolve({ ...store.session });
       }),
     },
@@ -71,31 +80,35 @@ const put = (body: unknown) =>
 
 beforeEach(() => {
   store.session.pool = ["a", "b", "c", "d", "e", "f", "g", "h"];
-  store.session.difficulty = "all";
+  store.session.difficulty = "lunatic";
   store.session.charactersClicked = Object.fromEntries(
     store.session.pool.map((n: string) => [n, false])
   );
   store.session.finishTime = null;
+  store.session.totalClicks = 0;
+  store.session.correctClicks = 0;
   store.updates.length = 0;
   store.poolUpdateCount = 0;
 });
 
 describe("PUT /api/click", () => {
   it("returns incorrect when the click misses the bounds (Easy — no fallout)", async () => {
-    store.session.difficulty = "5";
+    store.session.difficulty = "easy";
     const res = await put({ normalX: 0.9, normalY: 0.9, character: "a" });
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
       result: "incorrect",
       restored: null,
       active: ["a", "b", "c", "d", "e"],
+      totalClicks: 1,
+      correctClicks: 0,
     });
-    expect(store.updates).toHaveLength(0);
+    expect(store.updates).toHaveLength(1); // only the click (activity + counter)
     expect(store.poolUpdateCount).toBe(0);
   });
 
   it("reshuffles the pool on a wrong pick in Normal mode (no restore)", async () => {
-    store.session.difficulty = "20";
+    store.session.difficulty = "normal";
     const res = await put({ normalX: 0.9, normalY: 0.9, character: "a" });
     expect(res.status).toBe(200);
     const body = await res.json();
@@ -107,6 +120,21 @@ describe("PUT /api/click", () => {
     for (const name of body.active) {
       expect(store.session.pool).toContain(name);
     }
+  });
+
+  it("restores a random found character and reshuffles the pool (Hard)", async () => {
+    store.session.difficulty = "hard";
+    await put({ normalX: 0.15, normalY: 0.15, character: "a" });
+    expect(store.session.charactersClicked.a).toBe(true);
+
+    const res = await put({ normalX: 0.9, normalY: 0.9, character: "b" });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.result).toBe("incorrect");
+    expect(body.restored).toBe("a");
+    expect(store.session.charactersClicked.a).toBe(false);
+    expect(store.poolUpdateCount).toBe(1);
+    expect(body.active).toHaveLength(5);
   });
 
   it("restores a random found character and reshuffles the pool (Lunatic)", async () => {
@@ -163,6 +191,8 @@ describe("PUT /api/click", () => {
       result: "correct",
       finished: false,
       replacement: "f",
+      totalClicks: 1,
+      correctClicks: 1,
     });
     expect(store.session.charactersClicked.a).toBe(true);
   });
@@ -179,6 +209,8 @@ describe("PUT /api/click", () => {
       result: "correct",
       finished: false,
       replacement: "f",
+      totalClicks: 2,
+      correctClicks: 2,
     });
     expect(store.session.charactersClicked.a).toBe(true);
   });
@@ -200,8 +232,19 @@ describe("PUT /api/click", () => {
       result: "correct",
       finished: true,
       replacement: null,
+      totalClicks: 1,
+      correctClicks: 1,
     });
-    expect(typeof body.finishTime).toBe("undefined");
     expect(store.session.finishTime).not.toBeNull();
+    expect(typeof body.finishTime).toBe("undefined");
+  });
+
+  it("counts a miss against accuracy and a hit toward it", async () => {
+    await put({ normalX: 0.9, normalY: 0.9, character: "a" });
+    await put({ normalX: 0.35, normalY: 0.35, character: "b" });
+    const res = await put({ normalX: 0.9, normalY: 0.9, character: "c" });
+    const body = await res.json();
+    expect(body.totalClicks).toBe(3);
+    expect(body.correctClicks).toBe(1);
   });
 });
