@@ -303,29 +303,39 @@ export function GameBoard() {
     setDropdownOpen(true);
   }
 
+  /** Board shake + red vignette — the universal penalty visuals. */
+  const triggerShake = useCallback(() => {
+    if (!reduceMotion) {
+      void boardControls.start({
+        x: [0, -7, 7, -5, 5, -2, 2, 0],
+        transition: { duration: 0.3, ease: "easeInOut" },
+      });
+    }
+    setTimeoutFlashKey((k) => k + 1);
+  }, [boardControls, reduceMotion]);
+
+  /** Red pulse ring around a restored character card. */
+  const showRestoredRing = useCallback((restored: string) => {
+    setRestoredName(restored);
+    window.setTimeout(() => {
+      setRestoredName((n) => (n === restored ? null : n));
+    }, 1800);
+  }, []);
+
   const showPenalty = useCallback(
     (restored?: string) => {
-      if (!reduceMotion) {
-        void boardControls.start({
-          x: [0, -7, 7, -5, 5, -2, 2, 0],
-          transition: { duration: 0.3, ease: "easeInOut" },
-        });
-      }
-      setTimeoutFlashKey((k) => k + 1);
-      if (restored) {
-        setRestoredName(restored);
-        window.setTimeout(() => {
-          setRestoredName((n) => (n === restored ? null : n));
-        }, 1800);
-      }
+      triggerShake();
+      if (restored) showRestoredRing(restored);
     },
-    [boardControls, reduceMotion],
+    [triggerShake, showRestoredRing],
   );
 
   async function handleSelect(character: string) {
     if (!click || submittingRef.current) return;
     submittingRef.current = true;
-    touchActivity();
+    // No touchActivity here: the idle window must not start until the
+    // server has answered — API latency must not burn countdown time. The
+    // tick holds the full window while this request is in flight.
     const { normalX, normalY, boardX, boardY, key } = click;
     setDropdownOpen(false);
 
@@ -381,6 +391,7 @@ export function GameBoard() {
       setBurst({ x: boardX, y: boardY, verdict: "incorrect", key: key + 1 });
     } finally {
       submittingRef.current = false;
+      touchActivity();
     }
   }
 
@@ -416,20 +427,24 @@ export function GameBoard() {
   }
 
   /**
-   * Restart the Lunatic idle window (any selection or dispatch counts). The
-   * full 15s is held for a beat (`IDLE_RESET_GRACE_MS`) so the reset reads
-   * as feedback before the countdown starts ticking down again.
+   * Restart the Lunatic idle window — called only once the server has
+   * answered a selection or penalty (never at dispatch, so latency cannot
+   * burn countdown time). The full 15s is held for a beat
+   * (`IDLE_RESET_GRACE_MS`) so the reset reads as feedback before the
+   * countdown starts ticking down again.
    */
   function touchActivity() {
     lastActivityRef.current = Date.now();
   }
 
   /**
-   * Lunatic idle penalty. The window restarts at dispatch time, so a slow
-   * response (3s+) never re-triggers the penalty or sits at zero while
-   * waiting; the ref lock prevents overlapping requests. `firedAt` lets the
-   * server cancel the penalty if the player acted after it was dispatched
-   * (e.g. a selection sent before the timer ended, still in flight).
+   * Lunatic idle penalty. The window restarts when the server has answered,
+   * not when the request is sent — the tick holds the full window while the
+   * request is in flight, so a slow response never re-triggers the penalty
+   * or sits at zero while waiting; the ref lock prevents overlapping
+   * requests. `firedAt` lets the server cancel the penalty if the player
+   * acted after it was dispatched (e.g. a selection sent before the timer
+   * ended, still in flight).
    */
   useEffect(() => {
     if (!started || difficulty !== "lunatic" || finished) {
@@ -441,7 +456,13 @@ export function GameBoard() {
       if (timeoutInFlightRef.current) return;
       timeoutInFlightRef.current = true;
       const firedAt = Date.now();
-      touchActivity();
+      // The penalty is deterministic the moment the countdown hits zero —
+      // shake, vignette and wrong-click sound play right away instead of
+      // waiting for the server. Only the restore/shuffle state (and the
+      // restored ring, which needs the character name) land with the
+      // response.
+      playWrongSound();
+      triggerShake();
       try {
         const res = await fetch("/api/timeout", {
           method: "POST",
@@ -450,10 +471,9 @@ export function GameBoard() {
         });
         if (!res.ok) return;
         const data = await res.json();
-        let applied = false;
         if (data.restored) {
-          applied = true;
           setFound((prev) => prev.filter((name) => name !== data.restored));
+          showRestoredRing(data.restored);
         }
         if (Array.isArray(data.active)) {
           const next: string[] = data.active;
@@ -461,26 +481,30 @@ export function GameBoard() {
             next.length !== active.length ||
             next.some((name, i) => name !== active[i]);
           if (changed) {
-            applied = true;
             setShuffleTick((tick) => tick + 1);
             setStripShuffled(true);
             setActive(next);
           }
         }
-        if (applied) {
-          playWrongSound();
-          showPenalty(data.restored);
-        }
       } catch {
         // A failed penalty is skipped until the next idle window.
       } finally {
         timeoutInFlightRef.current = false;
+        touchActivity();
       }
     }
 
     const tick = () => {
       const now = Date.now();
       const since = now - lastActivityRef.current;
+      // A selection or penalty request in flight: hold the full window —
+      // API latency must not burn idle time. The reset grace begins only
+      // once the server has answered.
+      if (submittingRef.current || timeoutInFlightRef.current) {
+        setIdleLeft(LUNATIC_IDLE_MS);
+        lastTickSecondRef.current = -1;
+        return;
+      }
       // Reset feedback: hold the full window for `IDLE_RESET_GRACE_MS`
       // before the countdown resumes, then tick down from 15s.
       const left =
@@ -501,7 +525,7 @@ export function GameBoard() {
     const id = window.setInterval(tick, 90);
     tick();
     return () => window.clearInterval(id);
-  }, [started, difficulty, finished, active, boardControls, reduceMotion, showPenalty]);
+  }, [started, difficulty, finished, active, triggerShake, showRestoredRing]);
 
   return (
     <main className="min-h-screen mx-auto max-w-5xl px-4 py-6 sm:py-8 flex flex-col gap-3 sm:gap-4">
