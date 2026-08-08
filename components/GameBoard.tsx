@@ -839,9 +839,7 @@ export function GameBoard() {
           ref={boardRef}
           animate={boardControls}
           onClick={handleBoardClick}
-          className={`relative w-full aspect-[2893/1158] rounded-sm overflow-hidden scroll-frame bg-surface ${
-            requestInFlight ? "cursor-wait" : "cursor-crosshair"
-          }`}
+          className="relative w-full aspect-[2893/1158] rounded-sm overflow-hidden cursor-crosshair scroll-frame bg-surface"
         >
           <Image
             src="/img/background/touhou_full.jpg"
