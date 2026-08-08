@@ -21,9 +21,9 @@ const TABS: { id: DifficultyId; label: string }[] = [
   { id: "lunatic", label: "Lunatic" },
 ];
 
-const SORTS: { id: LeaderboardSort; label: string; title: string }[] = [
-  { id: "time", label: "Time", title: "Fastest time, then accuracy" },
-  { id: "accuracy", label: "Accuracy", title: "Highest accuracy, then time" },
+const SORTS: { id: LeaderboardSort; label: string }[] = [
+  { id: "time", label: "Time" },
+  { id: "accuracy", label: "Accuracy" },
 ];
 
 export function LeaderboardPage({
@@ -91,7 +91,6 @@ export function LeaderboardPage({
             <button
               key={option.id}
               type="button"
-              title={option.title}
               onClick={() => setSort(option.id)}
               className={`rounded-sm border px-3 py-1 font-display tracking-widest text-xs transition-colors ${
                 selected
@@ -123,62 +122,70 @@ export function LeaderboardPage({
         )}
 
         {entries !== null && entries.length > 0 && (
-          <ul>
-            <AnimatePresence initial={false}>
-              {entries.map((entry, index) => {
-                const top3 = index < 3;
-                const devAuto = entry.isAuthor === true;
-                return (
-                  <motion.li
-                    key={`${entry.name}-${entry.time}-${index}`}
-                    initial={{ opacity: 0, y: 14 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.07, duration: 0.28 }}
-                    className="flex items-center gap-4 sm:gap-6 py-3.5 border-b border-line/60"
-                  >
-                    <span
-                      className={`flex items-center justify-center w-9 h-9 shrink-0 rounded-sm border font-display text-sm ${
-                        devAuto
-                          ? "border-[#5b9bd5] text-[#5b9bd5]"
-                          : top3
-                            ? "border-ofuda text-ofuda"
-                            : "border-line text-soft"
-                      }`}
-                      aria-label={`Rank ${index + 1}`}
+          <div>
+            <div className="flex items-center gap-4 sm:gap-6 pb-2 border-b border-soft font-display tracking-[0.18em] text-[9px] sm:text-[10px] uppercase text-soft divide-x divide-soft">
+              <span className="w-9 shrink-0 text-center">Rank</span>
+              <span className="flex-1 min-w-0 pl-3 sm:pl-4">Name</span>
+              <span className="shrink-0 min-w-12 pl-3 sm:pl-4">Acc</span>
+              <span className="shrink-0 min-w-14 pl-3 sm:pl-4">Time</span>
+            </div>
+            <ul>
+              <AnimatePresence initial={false}>
+                {entries.map((entry, index) => {
+                  const top3 = index < 3;
+                  const devAuto = entry.isAuthor === true;
+                  return (
+                    <motion.li
+                      key={`${entry.name}-${entry.time}-${index}`}
+                      initial={{ opacity: 0, y: 14 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.07, duration: 0.28 }}
+                      className="flex items-center gap-4 sm:gap-6 py-3.5 border-b border-soft divide-x divide-soft"
                     >
-                      {index + 1}
-                    </span>
-                    <span
-                      className={`flex-1 min-w-0 font-display tracking-wide truncate text-base sm:text-lg ${
-                        devAuto
-                          ? "text-[#7fb8e6]"
-                          : top3
-                            ? "underline decoration-gold/70 underline-offset-4"
-                            : ""
-                      }`}
-                    >
-                      {entry.name}
-                    </span>
-                    <span
-                      className={`shrink-0 font-body tabular-nums text-sm sm:text-base ${
-                        devAuto ? "text-[#5b9bd5]" : "text-gold"
-                      }`}
-                      aria-label={`Accuracy ${Math.round((entry.accuracy ?? 1) * 100)}%`}
-                    >
-                      {Math.round((entry.accuracy ?? 1) * 100)}%
-                    </span>
-                    <span
-                      className={`shrink-0 font-body tabular-nums text-sm sm:text-base ${
-                        devAuto ? "text-[#5b9bd5]" : "text-soft"
-                      }`}
-                    >
-                      {formatTime(entry.time)}
-                    </span>
-                  </motion.li>
-                );
-              })}
-            </AnimatePresence>
-          </ul>
+                      <span
+                        className={`flex items-center justify-center w-9 h-9 shrink-0 rounded-sm border font-display text-sm ${
+                          devAuto
+                            ? "border-[#5b9bd5] text-[#5b9bd5]"
+                            : top3
+                              ? "border-ofuda text-ofuda"
+                              : "border-line text-soft"
+                        }`}
+                        aria-label={`Rank ${index + 1}`}
+                      >
+                        {index + 1}
+                      </span>
+                      <span
+                        className={`flex-1 min-w-0 pl-3 sm:pl-4 font-display tracking-wide truncate text-base sm:text-lg ${
+                          devAuto
+                            ? "text-[#7fb8e6]"
+                            : top3
+                              ? "underline decoration-gold/70 underline-offset-4"
+                              : ""
+                        }`}
+                      >
+                        {entry.name}
+                      </span>
+                      <span
+                        className={`shrink-0 min-w-12 pl-3 sm:pl-4 font-body tabular-nums text-sm sm:text-base ${
+                          devAuto ? "text-[#5b9bd5]" : "text-gold"
+                        }`}
+                        aria-label={`Accuracy ${Math.round((entry.accuracy ?? 1) * 100)}%`}
+                      >
+                        {Math.round((entry.accuracy ?? 1) * 100)}%
+                      </span>
+                      <span
+                        className={`shrink-0 min-w-14 pl-3 sm:pl-4 font-body tabular-nums text-sm sm:text-base ${
+                          devAuto ? "text-[#5b9bd5]" : "text-soft"
+                        }`}
+                      >
+                        {formatTime(entry.time)}
+                      </span>
+                    </motion.li>
+                  );
+                })}
+              </AnimatePresence>
+            </ul>
+          </div>
         )}
       </div>
     </main>
