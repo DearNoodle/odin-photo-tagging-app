@@ -928,9 +928,12 @@ export function GameBoard() {
             className="fixed inset-0 z-40 flex items-center justify-center bg-black/55 backdrop-blur-sm p-4"
           >
             <div className="card-frame bg-surface px-6 py-7 sm:px-8 sm:py-9 text-center max-w-sm mx-4">
-              <p className="font-display tracking-[0.3em] text-ofuda text-[10px] mb-1">
+              <Link
+                href="/credits"
+                className="inline-block font-display tracking-[0.3em] text-ofuda text-[10px] mb-1 hover:underline underline-offset-4"
+              >
                 DearNoodle&apos;s
-              </p>
+              </Link>
               <h2 className="font-display text-3xl sm:text-4xl leading-tight">
                 Touhou Ensemble
               </h2>
@@ -1069,6 +1072,23 @@ export function GameBoard() {
               >
                 Begin
               </button>
+              <div className="mt-5 flex items-center justify-center gap-4">
+                <Link
+                  href="/leaderboard"
+                  className="font-display tracking-[0.18em] text-[10px] uppercase text-soft hover:text-ofuda transition-colors"
+                >
+                  Ranking
+                </Link>
+                <span aria-hidden="true" className="text-line">
+                  ·
+                </span>
+                <Link
+                  href="/credits"
+                  className="font-display tracking-[0.18em] text-[10px] uppercase text-soft hover:text-ofuda transition-colors"
+                >
+                  Credits
+                </Link>
+              </div>
             </div>
           </motion.div>
         )}

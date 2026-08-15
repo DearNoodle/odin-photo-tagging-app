@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { formatTime } from "@/lib/format-time";
+import { SiteNav } from "@/components/SiteNav";
 import type { DifficultyId } from "@/lib/game/session-utils";
 import type { LeaderboardSort } from "@/lib/session-store";
 
@@ -47,16 +47,11 @@ export function LeaderboardPage({
 
   return (
     <main className="min-h-screen mx-auto max-w-2xl px-4 py-8 sm:py-12 flex flex-col gap-7">
-      <header className="flex items-baseline justify-between border-b border-line/70 pb-3">
+      <header className="flex flex-wrap items-baseline justify-between gap-4 border-b border-line/70 pb-3">
         <h1 className="font-display text-3xl sm:text-4xl tracking-wide">
           Ranking
         </h1>
-        <Link
-          href="/"
-          className="font-display tracking-[0.2em] text-xs sm:text-sm text-ofuda hover:underline underline-offset-4"
-        >
-          ← PLAY AGAIN
-        </Link>
+        <SiteNav active="ranking" />
       </header>
 
       <div role="tablist" aria-label="Difficulty" className="flex gap-2">
